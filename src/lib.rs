@@ -339,15 +339,17 @@ pub struct ConcurrentCache<Key: KeyBound, Value: ValueBound> {
 
 impl<K:KeyBound,V:ValueBound> Cache<K,V> for ConcurrentCache<K,V> {
     fn get(&mut self, key: &K) -> Option<Rc<V>> {
-        if self.map.read().unwrap().contains_key(key) {
-            return Some(self.map.read().unwrap().get(key).unwrap().clone());
+        let map = self.map.read();
+        if map.as_ref().unwrap().contains_key(key) {
+            return Some(map.unwrap().get(key).unwrap().clone());
         }
         None
     }
 
     fn take(&mut self, key: &K) -> Option<V> {
-        if self.map.read().unwrap().contains_key(key) {
-            let value = self.map.write().unwrap().remove(key).unwrap();
+        let map = self.map.write();
+        if map.as_ref().unwrap().contains_key(key) {
+            let value = map.unwrap().remove(key).unwrap();
             return Some(Rc::try_unwrap(value).unwrap());
         }
         None
