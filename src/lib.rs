@@ -1,12 +1,13 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::rc::Rc;
 use std::hash::Hash;
+use std::rc::Rc;
+use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
-
-pub trait KeyBound: Hash+Eq+Copy+Debug {}
-pub trait ValueBound: Copy+Eq+Debug {}
+pub trait KeyBound: Hash + Eq + Copy + Debug {}
+pub trait ValueBound: Copy + Eq + Debug {}
 
 // impl bound for built-in types
 macro_rules! impl_bound {
@@ -18,10 +19,9 @@ macro_rules! impl_bound {
     };
 }
 
-impl_bound!{u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, char}
+impl_bound! {u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, char}
 
-
-pub trait Cache<K:KeyBound,V:ValueBound> {
+pub trait Cache<K: KeyBound, V: ValueBound> {
     fn get(&mut self, key: &K) -> Option<Rc<V>>;
     fn take(&mut self, key: &K) -> Option<V>;
     fn put(&mut self, key: K, value: V);
@@ -33,15 +33,14 @@ pub trait Cache<K:KeyBound,V:ValueBound> {
 simple cache with no size limit
 wrapper around a hashmap
  */
-struct SimpleCache<K:KeyBound, V:ValueBound> {
+struct SimpleCache<K: KeyBound, V: ValueBound> {
     map: HashMap<K, Rc<V>>,
 }
 
-
-impl<Key:KeyBound, Value:ValueBound> Cache<Key, Value> for SimpleCache<Key, Value> {
+impl<Key: KeyBound, Value: ValueBound> Cache<Key, Value> for SimpleCache<Key, Value> {
     fn get(&mut self, key: &Key) -> Option<Rc<Value>> {
         if self.map.contains_key(key) {
-            return Some(self.map.get(key).unwrap().clone())
+            return Some(self.map.get(key).unwrap().clone());
         }
         None
     }
@@ -68,7 +67,7 @@ impl<Key:KeyBound, Value:ValueBound> Cache<Key, Value> for SimpleCache<Key, Valu
     }
 }
 
-impl<Key: KeyBound, Value:ValueBound> SimpleCache<Key, Value> {
+impl<Key: KeyBound, Value: ValueBound> SimpleCache<Key, Value> {
     #[allow(dead_code)]
     fn new() -> Self {
         Self {
@@ -84,14 +83,14 @@ put the most recently used item at the front of the list
 when the cache is full, remove the least recently used item from the back of the list
  */
 #[derive(Debug)]
-struct ListNode<Key:KeyBound, Value:ValueBound> {
+struct ListNode<Key: KeyBound, Value: ValueBound> {
     key: Key,
     value: Rc<Value>,
     next: Option<Rc<RefCell<ListNode<Key, Value>>>>,
     prev: Option<Rc<RefCell<ListNode<Key, Value>>>>,
 }
 
-impl<Key:KeyBound, Value:ValueBound> ListNode<Key, Value> {
+impl<Key: KeyBound, Value: ValueBound> ListNode<Key, Value> {
     fn new(key: Key, value: Value) -> Self {
         Self {
             key: key,
@@ -102,14 +101,14 @@ impl<Key:KeyBound, Value:ValueBound> ListNode<Key, Value> {
     }
 }
 
-struct DoubleList<K:KeyBound, V:ValueBound> {
+struct DoubleList<K: KeyBound, V: ValueBound> {
     head: Option<Rc<RefCell<ListNode<K, V>>>>,
     tail: Option<Rc<RefCell<ListNode<K, V>>>>,
     len: usize,
 }
 
 // only need push_front and remove_tail for now
-impl<K:KeyBound, V:ValueBound> DoubleList<K, V> {
+impl<K: KeyBound, V: ValueBound> DoubleList<K, V> {
     fn new() -> Self {
         Self {
             head: None,
@@ -118,7 +117,7 @@ impl<K:KeyBound, V:ValueBound> DoubleList<K, V> {
         }
     }
 
-    fn push_front(&mut self, node: Rc<RefCell<ListNode<K, V>>>) -> &mut DoubleList<K,V> {
+    fn push_front(&mut self, node: Rc<RefCell<ListNode<K, V>>>) -> &mut DoubleList<K, V> {
         node.as_ref().borrow_mut().next = self.head.clone();
         match &self.head {
             Some(head) => {
@@ -147,9 +146,7 @@ impl<K:KeyBound, V:ValueBound> DoubleList<K, V> {
                 self.len -= 1;
                 Some(tail.clone())
             }
-            None => {
-                None
-            }
+            None => None,
         }
     }
     fn remove_node(&mut self, node: Rc<RefCell<ListNode<K, V>>>) {
@@ -223,7 +220,8 @@ impl<Key: KeyBound, Value: ValueBound> Cache<Key, Value> for LRU<Key, Value> {
     // else create a new node at the front of the list
     fn put(&mut self, key: Key, value: Value) {
         if self.lists.len() >= self.max_size {
-            self.map.remove(&self.lists.remove_tail().unwrap().as_ref().borrow().key);
+            self.map
+                .remove(&self.lists.remove_tail().unwrap().as_ref().borrow().key);
         }
         if self.map.contains_key(&key) {
             let node = self.map.get(&key).unwrap();
@@ -244,7 +242,6 @@ impl<Key: KeyBound, Value: ValueBound> Cache<Key, Value> for LRU<Key, Value> {
             let node: Rc<RefCell<ListNode<Key, Value>>> = self.map.remove(key).unwrap().to_owned();
             self.lists.remove_node(node);
         }
-        
     }
 
     // clear the map and the list
@@ -253,9 +250,7 @@ impl<Key: KeyBound, Value: ValueBound> Cache<Key, Value> for LRU<Key, Value> {
     }
 }
 
-
-
-impl<K:KeyBound,V:ValueBound> LRU<K,V> {
+impl<K: KeyBound, V: ValueBound> LRU<K, V> {
     pub fn new(max_size: usize) -> Self {
         Self {
             map: HashMap::new(),
@@ -265,22 +260,19 @@ impl<K:KeyBound,V:ValueBound> LRU<K,V> {
     }
 }
 
-use std::sync::{RwLock, Arc};
-use std::time::{Duration,Instant};
-
 #[derive(Debug)]
-struct Entry<V:ValueBound> {
+struct Entry<V: ValueBound> {
     value: Rc<V>,
     expire_time: Option<Instant>,
 }
 
 #[derive(Debug)]
-pub struct TTL<Key:KeyBound, Value:ValueBound> {
+pub struct TTL<Key: KeyBound, Value: ValueBound> {
     map: HashMap<Key, Entry<Value>>,
     global_ttl: Duration,
 }
 
-impl<K:KeyBound,V:ValueBound> Cache<K,V> for TTL<K,V> {
+impl<K: KeyBound, V: ValueBound> Cache<K, V> for TTL<K, V> {
     fn get(&mut self, key: &K) -> Option<Rc<V>> {
         if self.map.contains_key(key) {
             let value = self.map.get(key).unwrap();
@@ -305,10 +297,13 @@ impl<K:KeyBound,V:ValueBound> Cache<K,V> for TTL<K,V> {
     }
 
     fn put(&mut self, key: K, value: V) {
-        self.map.insert(key, Entry {
-            value: Rc::new(value),
-            expire_time: Some(Instant::now() + self.global_ttl),
-        });
+        self.map.insert(
+            key,
+            Entry {
+                value: Rc::new(value),
+                expire_time: Some(Instant::now() + self.global_ttl),
+            },
+        );
     }
 
     fn remove(&mut self, key: &K) {
@@ -320,8 +315,7 @@ impl<K:KeyBound,V:ValueBound> Cache<K,V> for TTL<K,V> {
     }
 }
 
-
-impl<K:KeyBound,V:ValueBound> TTL<K,V> {
+impl<K: KeyBound, V: ValueBound> TTL<K, V> {
     #[allow(dead_code)]
     pub fn new(global_ttl: Duration) -> Self {
         Self {
@@ -331,13 +325,11 @@ impl<K:KeyBound,V:ValueBound> TTL<K,V> {
     }
 }
 
-
-
 pub struct ConcurrentCache<Key: KeyBound, Value: ValueBound> {
     map: Arc<RwLock<HashMap<Key, Rc<Value>>>>,
 }
 
-impl<K:KeyBound,V:ValueBound> Cache<K,V> for ConcurrentCache<K,V> {
+impl<K: KeyBound, V: ValueBound> Cache<K, V> for ConcurrentCache<K, V> {
     fn get(&mut self, key: &K) -> Option<Rc<V>> {
         let map = self.map.read();
         if map.as_ref().unwrap().contains_key(key) {
@@ -367,8 +359,6 @@ impl<K:KeyBound,V:ValueBound> Cache<K,V> for ConcurrentCache<K,V> {
         self.map.write().unwrap().clear();
     }
 }
-
-
 
 #[test]
 fn test_lru_cache() {
