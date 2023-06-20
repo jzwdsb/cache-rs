@@ -21,8 +21,6 @@ macro_rules! impl_bound {
 impl_bound!{u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, char}
 
 
-
-
 pub trait Cache<K:KeyBound,V:ValueBound> {
     fn get(&mut self, key: &K) -> Option<Rc<V>>;
     fn take(&mut self, key: &K) -> Option<V>;
@@ -267,6 +265,7 @@ impl<K:KeyBound,V:ValueBound> LRU<K,V> {
     }
 }
 
+use std::sync::{RwLock, Arc};
 use std::time::{Duration,Instant};
 
 #[derive(Debug)]
@@ -321,6 +320,7 @@ impl<K:KeyBound,V:ValueBound> Cache<K,V> for TTL<K,V> {
     }
 }
 
+
 impl<K:KeyBound,V:ValueBound> TTL<K,V> {
     #[allow(dead_code)]
     pub fn new(global_ttl: Duration) -> Self {
@@ -331,7 +331,41 @@ impl<K:KeyBound,V:ValueBound> TTL<K,V> {
     }
 }
 
-// TODO: concurrent safe cache
+
+
+pub struct ConcurrentCache<Key: KeyBound, Value: ValueBound> {
+    map: Arc<RwLock<HashMap<Key, Rc<Value>>>>,
+}
+
+impl<K:KeyBound,V:ValueBound> Cache<K,V> for ConcurrentCache<K,V> {
+    fn get(&mut self, key: &K) -> Option<Rc<V>> {
+        if self.map.read().unwrap().contains_key(key) {
+            return Some(self.map.read().unwrap().get(key).unwrap().clone());
+        }
+        None
+    }
+
+    fn take(&mut self, key: &K) -> Option<V> {
+        if self.map.read().unwrap().contains_key(key) {
+            let value = self.map.write().unwrap().remove(key).unwrap();
+            return Some(Rc::try_unwrap(value).unwrap());
+        }
+        None
+    }
+
+    fn put(&mut self, key: K, value: V) {
+        self.map.write().unwrap().insert(key, Rc::new(value));
+    }
+
+    fn remove(&mut self, key: &K) {
+        self.map.write().unwrap().remove(key);
+    }
+
+    fn clear(&mut self) {
+        self.map.write().unwrap().clear();
+    }
+}
+
 
 
 #[test]
